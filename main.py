@@ -1,4 +1,18 @@
-import asyncio
+import os
+from aiohttp import web
+
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher, types
@@ -109,7 +123,8 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
 
     print("🤖 Bot ishga tushdi...")
-
+    await start_web_server()
+    
     await dp.start_polling(bot)
 
 
