@@ -7,9 +7,9 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Yoki tokeningiz
-CHANNEL_USERNAME = "@kanal_username"     # Kanalingiz username'i (masalan: @jadid_books)
-CHANNEL_ID = "@kanal_username"           # Kanal ID si yoki username'i
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_USERNAME = "@A_ToolsX"     # Kanalingiz username'i
+CHANNEL_ID = "@A_ToolsX"           # Kanal ID si yoki username'i
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -52,7 +52,7 @@ async def check_subscription(user_id: int) -> bool:
         return False
 
 
-#--- START VA REFERAL HANDLER ---
+# --- START VA REFERAL HANDLER ---
 @dp.message(CommandStart())
 async def start_handler(message: types.Message, command: CommandObject):
     user_id = message.from_user.id
@@ -77,33 +77,13 @@ async def start_handler(message: types.Message, command: CommandObject):
         builder.adjust(1)
 
         await message.answer(
-            "Xush kelibsiz! Botdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
+            "🎉 Xush kelibsiz!\n\nBotdan va referal tizimdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
             reply_markup=builder.as_markup()
         )
     else:
         await show_main_menu(message)
 
 
-async def show_main_menu(message: types.Message):
-    bot_info = await bot.get_me()
-    user_id = message.from_user.id
-    
-    # Referal sonini olish
-    cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    ref_count = row[0] if row else 0
-
-    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
-
-    text = (
-        f"🎉 **Xush kelibsiz!**\n\n"
-        f"Siz kanalimizga obuna bo'lgansiz. Jadid kitoblar do'konidan foydalanishingiz mumkin.\n\n"
-        f"🔗 **Sizning referal havolangiz:**\n`{ref_link}`\n\n"
-        f"📊 **Siz taklif qilgan odamlar soni:** {ref_count} ta\n\n"
-        f"Ushbu havolani do'stlaringizga yuboring. Ular botga kirib kanalga qo'shilsa, hisobingizga +1 odam qo'shiladi!"
-    )
-    await message.answer(text, parse_mode="Markdown")
-        
 @dp.callback_query(F.data == "check_sub")
 async def check_sub_callback(call: types.CallbackQuery):
     user_id = call.from_user.id
@@ -139,9 +119,9 @@ async def check_sub_callback(call: types.CallbackQuery):
         await call.answer("❌ Siz hali kanalga a'zo bo'lmadingiz!", show_alert=True)
 
 
-async def show_main_menu(message: types.Message):
+async def show_main_menu(event: types.Message | types.CallbackQuery):
     bot_info = await bot.get_me()
-    user_id = message.chat.id
+    user_id = event.from_user.id
     
     # Referal sonini olish
     cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (user_id,))
@@ -151,12 +131,17 @@ async def show_main_menu(message: types.Message):
     ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
 
     text = (
-        f"Xush kelibsiz!\n\n"
+        f"🎉 **Xush kelibsiz!**\n\n"
+        f"Siz kanalimizga obuna bo'lgansiz. Jadid kitoblar do'konidan foydalanishingiz mumkin.\n\n"
         f"🔗 **Sizning referal havolangiz:**\n`{ref_link}`\n\n"
         f"📊 **Siz taklif qilgan odamlar soni:** {ref_count} ta\n\n"
-        f"Ushbu havolani do'stlaringizga yuboring. Ular kanalga qo'shilgach, hisobingizga ball qo'shiladi."
+        f"Ushbu havolani do'stlaringizga yuboring. Ular botga kirib kanalga qo'shilsa, hisobingizga +1 odam qo'shiladi!"
     )
-    await message.answer(text, parse_mode="Markdown")
+    
+    if isinstance(event, types.Message):
+        await event.answer(text, parse_mode="Markdown")
+    else:
+        await event.message.answer(text, parse_mode="Markdown")
 
 
 # --- BOTNI ISHGA TUSHIRISH ---
