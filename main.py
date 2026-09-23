@@ -4,12 +4,12 @@ import os
 import sqlite3
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"     # Kanalingiz username'i
-CHANNEL_ID = "@jadid_kitoblar_dokoni"           # Kanal ID si yoki username'i
+CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"     # Sizning kanalingiz
+CHANNEL_ID = "@jadid_kitoblar_dokoni"           # Sizning kanalingiz
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -56,9 +56,8 @@ async def check_subscription(user_id: int) -> bool:
 @dp.message(CommandStart())
 async def start_handler(message: types.Message, command: CommandObject):
     user_id = message.from_user.id
-    args = command.args  # Referal bo'lib kirgan foydalanuvchi ID si
+    args = command.args
 
-    # Baza tekshiruvi
     cursor.execute("SELECT user_id, referrer_id FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
 
@@ -67,7 +66,6 @@ async def start_handler(message: types.Message, command: CommandObject):
         cursor.execute("INSERT INTO users (user_id, referrer_id) VALUES (?, ?)", (user_id, referrer_id))
         conn.commit()
 
-    # Kanalga a'zo ekanligini tekshirish
     is_subscribed = await check_subscription(user_id)
 
     if not is_subscribed:
@@ -77,8 +75,9 @@ async def start_handler(message: types.Message, command: CommandObject):
         builder.adjust(1)
 
         await message.answer(
-            "🎉 Xush kelibsiz!\n\nBotdan va referal tizimdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
-            reply_markup=builder.as_markup()
+            "🎉 **Xush kelibsiz!**\n\nBotdan va referal tizimdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
         )
     else:
         await show_main_menu(message)
@@ -90,19 +89,15 @@ async def check_sub_callback(call: types.CallbackQuery):
     is_subscribed = await check_subscription(user_id)
 
     if is_subscribed:
-        # Referal ballini oshirish (agar birinchi marta kirayotgan bo'lsa)
         cursor.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
         res = cursor.fetchone()
         
         if res and res[0]:
             referrer_id = res[0]
-            # Referal egasining ballini 1 ga oshirish
             cursor.execute("UPDATE users SET ref_count = ref_count + 1 WHERE user_id = ?", (referrer_id,))
-            # Qayta sanalmasligi uchun referrer_id ni NULL qilish
             cursor.execute("UPDATE users SET referrer_id = NULL WHERE user_id = ?", (user_id,))
             conn.commit()
 
-            # Taklif qilgan foydalanuvchiga xabar yuborish
             try:
                 cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (referrer_id,))
                 count = cursor.fetchone()[0]
@@ -114,7 +109,7 @@ async def check_sub_callback(call: types.CallbackQuery):
                 pass
 
         await call.message.delete()
-        await show_main_menu(call.message)
+        await show_main_menu(call)
     else:
         await call.answer("❌ Siz hali kanalga a'zo bo'lmadingiz!", show_alert=True)
 
@@ -123,7 +118,6 @@ async def show_main_menu(event: types.Message | types.CallbackQuery):
     bot_info = await bot.get_me()
     user_id = event.from_user.id
     
-    # Referal sonini olish
     cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     ref_count = row[0] if row else 0
