@@ -8,8 +8,8 @@ from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_USERNAME = "@A_ToolsX"     # Kanalingiz username'i
-CHANNEL_ID = "@A_ToolsX"           # Kanal ID si yoki username'i
+CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"     # Kanalingiz username'i
+CHANNEL_ID = "@jadid_kitoblar_dokoni"           # Kanal ID si yoki username'i
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
