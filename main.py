@@ -52,7 +52,7 @@ async def check_subscription(user_id: int) -> bool:
         return False
 
 
-# --- COMMAND HANDLERS ---
+#--- START VA REFERAL HANDLER ---
 @dp.message(CommandStart())
 async def start_handler(message: types.Message, command: CommandObject):
     user_id = message.from_user.id
@@ -77,13 +77,33 @@ async def start_handler(message: types.Message, command: CommandObject):
         builder.adjust(1)
 
         await message.answer(
-            "Xush kelibsiz! Botdan va referal tizimdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
+            "Xush kelibsiz! Botdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
             reply_markup=builder.as_markup()
         )
     else:
         await show_main_menu(message)
 
 
+async def show_main_menu(message: types.Message):
+    bot_info = await bot.get_me()
+    user_id = message.from_user.id
+    
+    # Referal sonini olish
+    cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    ref_count = row[0] if row else 0
+
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
+    text = (
+        f"🎉 **Xush kelibsiz!**\n\n"
+        f"Siz kanalimizga obuna bo'lgansiz. Jadid kitoblar do'konidan foydalanishingiz mumkin.\n\n"
+        f"🔗 **Sizning referal havolangiz:**\n`{ref_link}`\n\n"
+        f"📊 **Siz taklif qilgan odamlar soni:** {ref_count} ta\n\n"
+        f"Ushbu havolani do'stlaringizga yuboring. Ular botga kirib kanalga qo'shilsa, hisobingizga +1 odam qo'shiladi!"
+    )
+    await message.answer(text, parse_mode="Markdown")
+        
 @dp.callback_query(F.data == "check_sub")
 async def check_sub_callback(call: types.CallbackQuery):
     user_id = call.from_user.id
