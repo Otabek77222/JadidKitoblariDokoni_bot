@@ -1,10 +1,34 @@
 import asyncio
-import os
-from aiohttp import web
 import logging
 import os
+import sqlite3
 from aiohttp import web
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Yoki tokeningiz
+CHANNEL_USERNAME = "@kanal_username"     # Kanalingiz username'i (masalan: @jadid_books)
+CHANNEL_ID = "@kanal_username"           # Kanal ID si yoki username'i
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+# --- BAZA BILAN ISHLASH (SQLite) ---
+conn = sqlite3.connect("referrals.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    referrer_id INTEGER,
+    ref_count INTEGER DEFAULT 0
+)
+""")
+conn.commit()
+
+
+# --- WEBSERVER (Render uchun) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -16,121 +40,111 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    import asyncio
-import logging
-
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-BOT_TOKEN = "8813903836:AAFJyQuFnTqm8w0KBnpoU7-7pnfFJFOoSww"
-
-CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"
-CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
-
-dp = Dispatcher()
 
 
-def subscribe_keyboard():
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📢 Kanalga obuna bo‘lish",
-                    url=CHANNEL_LINK
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="✅ Obunani tekshirish",
-                    callback_data="check_subscription"
-                )
-            ]
-        ]
-    )
-
-
-async def is_subscribed(bot: Bot, user_id: int):
+# --- KANALGA A'ZOLIKNI TEKSHIRISH ---
+async def check_subscription(user_id: int) -> bool:
     try:
-        member = await bot.get_chat_member(
-            chat_id=CHANNEL_USERNAME,
-            user_id=user_id
-        )
-
-        return member.status in [
-            "member",
-            "administrator",
-            "creator"
-        ]
-
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        return member.status in ["creator", "administrator", "member"]
     except Exception as e:
-        logging.error(e)
+        logging.error(f"Kanalni tekshirishda xato: {e}")
         return False
 
 
+# --- COMMAND HANDLERS ---
 @dp.message(CommandStart())
-async def start_handler(message: types.Message, bot: Bot):
+async def start_handler(message: types.Message, command: CommandObject):
+    user_id = message.from_user.id
+    args = command.args  # Referal bo'lib kirgan foydalanuvchi ID si
 
-    if await is_subscribed(bot, message.from_user.id):
+    # Baza tekshiruvi
+    cursor.execute("SELECT user_id, referrer_id FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        referrer_id = int(args) if args and args.isdigit() and int(args) != user_id else None
+        cursor.execute("INSERT INTO users (user_id, referrer_id) VALUES (?, ?)", (user_id, referrer_id))
+        conn.commit()
+
+    # Kanalga a'zo ekanligini tekshirish
+    is_subscribed = await check_subscription(user_id)
+
+    if not is_subscribed:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}")
+        builder.button(text="✅ A'zolikni tasdiqlash", callback_data="check_sub")
+        builder.adjust(1)
 
         await message.answer(
-            "🎉 Xush kelibsiz!\n\n"
-            "Siz kanalimizga obuna bo‘lgansiz.\n"
-            "📚 Jadid kitoblar do‘konidan foydalanishingiz mumkin."
+            "Xush kelibsiz! Botdan va referal tizimdan foydalanish uchun avval kanalimizga a'zo bo'ling:",
+            reply_markup=builder.as_markup()
         )
-
     else:
-
-        await message.answer(
-            "📚 <b>Jadid kitoblar do‘koni</b>\n\n"
-            "Botdan foydalanish uchun avval "
-            "kanalimizga obuna bo‘ling 👇",
-            reply_markup=subscribe_keyboard(),
-            parse_mode="HTML"
-        )
+        await show_main_menu(message)
 
 
-@dp.callback_query(lambda c: c.data == "check_subscription")
-async def check_subscription(
-    callback: types.CallbackQuery,
-    bot: Bot
-):
+@dp.callback_query(F.data == "check_sub")
+async def check_sub_callback(call: types.CallbackQuery):
+    user_id = call.from_user.id
+    is_subscribed = await check_subscription(user_id)
 
-    if await is_subscribed(
-        bot,
-        callback.from_user.id
-    ):
+    if is_subscribed:
+        # Referal ballini oshirish (agar birinchi marta kirayotgan bo'lsa)
+        cursor.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        
+        if res and res[0]:
+            referrer_id = res[0]
+            # Referal egasining ballini 1 ga oshirish
+            cursor.execute("UPDATE users SET ref_count = ref_count + 1 WHERE user_id = ?", (referrer_id,))
+            # Qayta sanalmasligi uchun referrer_id ni NULL qilish
+            cursor.execute("UPDATE users SET referrer_id = NULL WHERE user_id = ?", (user_id,))
+            conn.commit()
 
-        await callback.message.edit_text(
-            "🎉 <b>Tabriklaymiz!</b>\n\n"
-            "Siz kanalimizga muvaffaqiyatli obuna bo‘lgansiz.\n\n"
-            "📚 Jadid kitoblar do‘koniga xush kelibsiz!",
-            parse_mode="HTML"
-        )
+            # Taklif qilgan foydalanuvchiga xabar yuborish
+            try:
+                cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (referrer_id,))
+                count = cursor.fetchone()[0]
+                await bot.send_message(
+                    referrer_id,
+                    f"🎉 Siz taklif qilgan foydalanuvchi kanalga qo'shildi!\nSizning jami takliflaringiz: **{count}** ta."
+                )
+            except Exception:
+                pass
 
-        await callback.answer(
-            "✅ Obunangiz tasdiqlandi!"
-        )
-
+        await call.message.delete()
+        await show_main_menu(call.message)
     else:
-
-        await callback.answer(
-            "❌ Siz hali kanalga obuna bo‘lmagansiz.",
-            show_alert=True
-        )
+        await call.answer("❌ Siz hali kanalga a'zo bo'lmadingiz!", show_alert=True)
 
 
-async def main():
-
-    logging.basicConfig(level=logging.INFO)
-
-    bot = Bot(token=BOT_TOKEN)
-
-    print("🤖 Bot ishga tushdi...")
-    await start_web_server()
+async def show_main_menu(message: types.Message):
+    bot_info = await bot.get_me()
+    user_id = message.chat.id
     
-    await dp.start_polling(bot)
+    # Referal sonini olish
+    cursor.execute("SELECT ref_count FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    ref_count = row[0] if row else 0
 
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
+    text = (
+        f"Xush kelibsiz!\n\n"
+        f"🔗 **Sizning referal havolangiz:**\n`{ref_link}`\n\n"
+        f"📊 **Siz taklif qilgan odamlar soni:** {ref_count} ta\n\n"
+        f"Ushbu havolani do'stlaringizga yuboring. Ular kanalga qo'shilgach, hisobingizga ball qo'shiladi."
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+
+# --- BOTNI ISHGA TUSHIRISH ---
+async def main():
+    await start_web_server()
+    print("🤖 Bot ishga tushdi...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
