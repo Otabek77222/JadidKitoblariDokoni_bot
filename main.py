@@ -3,7 +3,8 @@ import logging
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 import psycopg2
 from aiohttp import web
 
@@ -15,8 +16,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 PORT = int(os.getenv("PORT", 8080))
 
-# Admin Telegram ID (FAQAT SIZ REYTINGNI BEKOR QILA OLASIZ)
+# Admin Telegram ID va Kanal sozlamalari
 ADMIN_ID = 761158313
+CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"  # Kanal username'i
+CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -111,6 +114,20 @@ def reset_all_referrals():
         logging.error(f"Natijalarni tozalashda xatolik: {e}")
         return False
 
+# Kanalga obuna bo'lganligini tekshirish funksiyasi
+async def check_subscription(user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        # Agar status quyidagilardan biri bo'lsa, demak obuna bo'lgan
+        if member.status in ["creator", "administrator", "member"]:
+            return True
+        return False
+    except TelegramBadRequest:
+        # Agar bot kanalga admin bo'lmasa yoki xatolik bo'lsa
+        return True
+    except Exception:
+        return False
+
 # Asosiy menyu klaviaturasi
 def main_menu_keyboard(user_id):
     buttons = [
@@ -118,7 +135,6 @@ def main_menu_keyboard(user_id):
         [KeyboardButton(text="🔗 Taklif havolasi"), KeyboardButton(text="📊 Mening statistikaim")],
         [KeyboardButton(text="🏆 Top taklif qilganlar")]
     ]
-    # Agar foydalanuvchi Admin bo'lsa, tozalash tugmasi ko'rinadi
     if user_id == ADMIN_ID:
         buttons.append([KeyboardButton(text="⚙️ Natijalarni bekor qilish (Admin)")])
 
@@ -130,6 +146,25 @@ async def start_handler(message: types.Message):
     first_name = message.from_user.first_name
     username = message.from_user.username
     
+    # Kanalga obuna bo'lganligini tekshiramiz
+    is_subscribed = await check_subscription(user_id)
+    
+    if not is_subscribed:
+        # Obuna bo'lmagan bo'lsa, tugma chiqarib to'xtatamiz
+        subscribe_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=CHANNEL_LINK)],
+                [InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data="check_sub")]
+            ]
+        )
+        await message.answer(
+            f"❌ Hurmatli <b>{first_name}</b>, botimizdan foydalanish uchun avval quyidagi kanalimizga obuna boʻlishingiz kerak:",
+            parse_mode="HTML",
+            reply_markup=subscribe_keyboard
+        )
+        return
+
+    # Agar obuna bo'lgan bo'lsa, referralni qayd etamiz va xush kelibsiz deymiz
     args = message.text.split()
     referrer_id = None
     if len(args) > 1 and args[1].isdigit():
@@ -142,9 +177,34 @@ async def start_handler(message: types.Message):
     welcome_text = (
         f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
         f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
+        f"Kanalimiz: <a href='{CHANNEL_LINK}'>Jadid kitoblar do'koni</a>\n\n"
         f"Quyidagi menyudan kerakli boʻlimni tanlang."
     )
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id))
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
+
+# "Obunani tekshirish" tugmasi bosilganda ishlaydigan handler
+@dp.callback_query(lambda c: c.data == "check_sub")
+async def process_check_sub(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    first_name = callback_query.from_user.first_name
+    username = callback_query.from_user.username
+    
+    is_subscribed = await check_subscription(user_id)
+    
+    if not is_subscribed:
+        await callback_query.answer("❌ Siz hali kanalga obuna bo'lmadingiz!", show_alert=True)
+        return
+
+    await callback_query.message.delete()
+    
+    save_user(user_id, first_name, username)
+    
+    welcome_text = (
+        f"Rahmat, <b>{first_name}</b>! Obunangiz tasdiqlandi ✅\n\n"
+        f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
+        f"Quyidagi menyudan kerakli boʻlimni tanlang."
+    )
+    await callback_query.message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
 
 @dp.message(lambda msg: msg.text in ["🔗 Taklif havolasi", "📊 Mening statistikaim"])
 async def stats_handler(message: types.Message):
@@ -154,10 +214,12 @@ async def stats_handler(message: types.Message):
     ref_count = get_referral_count(user_id)
     
     text = (
+        f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali: <a href='{CHANNEL_LINK}'>Kanalga o'tish</a>\n\n"
         f"🔗 <b>Sizning taklif havolangiz:</b>\n<code>{ref_link}</code>\n\n"
-        f"👥 <b>Siz taklif qilgan do'stlar soni:</b> {ref_count} ta"
+        f"👥 <b>Siz taklif qilgan do'stlar soni:</b> {ref_count} ta\n\n"
+        f"Ushbu havolani do'stlaringizga yuboring. Ular botga kirib kanalga qo'shilsa, hisobingizga +1 odam qo'shiladi!"
     )
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 # Top taklif qilganlar (Reyting)
 @dp.message(lambda msg: msg.text == "🏆 Top taklif qilganlar")
@@ -188,7 +250,7 @@ async def reset_handler(message: types.Message):
 
 @dp.message(lambda msg: msg.text == "📚 Kitoblar katalogi")
 async def catalog_handler(message: types.Message):
-    await message.answer("📚 Tez orada kitoblar katalogi joylashtiriladi!")
+    await message.answer(f"📚 Kitoblar katalogi bilan tanishish uchun kanalimizga o'ting: <a href='{CHANNEL_LINK}'>Jadid kitoblar do'koni</a>", parse_mode="HTML", disable_web_page_preview=True)
 
 # Web Server Render uchun
 async def handle_ping(request):
@@ -211,4 +273,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+                
