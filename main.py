@@ -18,7 +18,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 # Admin Telegram ID va Kanal sozlamalari
 ADMIN_ID = 761158313
-CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"  # Kanal username'i
+CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"
 CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
 
 bot = Bot(token=BOT_TOKEN)
@@ -118,12 +118,10 @@ def reset_all_referrals():
 async def check_subscription(user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        # Agar status quyidagilardan biri bo'lsa, demak obuna bo'lgan
         if member.status in ["creator", "administrator", "member"]:
             return True
         return False
     except TelegramBadRequest:
-        # Agar bot kanalga admin bo'lmasa yoki xatolik bo'lsa
         return True
     except Exception:
         return False
@@ -146,11 +144,9 @@ async def start_handler(message: types.Message):
     first_name = message.from_user.first_name
     username = message.from_user.username
     
-    # Kanalga obuna bo'lganligini tekshiramiz
     is_subscribed = await check_subscription(user_id)
     
     if not is_subscribed:
-        # Obuna bo'lmagan bo'lsa, tugma chiqarib to'xtatamiz
         subscribe_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=CHANNEL_LINK)],
@@ -164,7 +160,6 @@ async def start_handler(message: types.Message):
         )
         return
 
-    # Agar obuna bo'lgan bo'lsa, referralni qayd etamiz va xush kelibsiz deymiz
     args = message.text.split()
     referrer_id = None
     if len(args) > 1 and args[1].isdigit():
@@ -177,12 +172,11 @@ async def start_handler(message: types.Message):
     welcome_text = (
         f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
         f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
-        f"Kanalimiz: <a href='{CHANNEL_LINK}'>Jadid kitoblar do'koni</a>\n\n"
+        f"Kanalimiz: Jadid kitoblar do'koni\n\n"
         f"Quyidagi menyudan kerakli boʻlimni tanlang."
     )
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
 
-# "Obunani tekshirish" tugmasi bosilganda ishlaydigan handler
 @dp.callback_query(lambda c: c.data == "check_sub")
 async def process_check_sub(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -196,12 +190,12 @@ async def process_check_sub(callback_query: types.CallbackQuery):
         return
 
     await callback_query.message.delete()
-    
     save_user(user_id, first_name, username)
     
     welcome_text = (
         f"Rahmat, <b>{first_name}</b>! Obunangiz tasdiqlandi ✅\n\n"
         f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
+        f"Kanalimiz: Jadid kitoblar do'koni\n\n"
         f"Quyidagi menyudan kerakli boʻlimni tanlang."
     )
     await callback_query.message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
@@ -209,15 +203,13 @@ async def process_check_sub(callback_query: types.CallbackQuery):
 @dp.message(lambda msg: msg.text in ["🔗 Taklif havolasi", "📊 Mening statistikaim"])
 async def stats_handler(message: types.Message):
     user_id = message.from_user.id
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
     ref_count = get_referral_count(user_id)
     
     text = (
-        f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali: <a href='{CHANNEL_LINK}'>Kanalga o'tish</a>\n\n"
-        f"🔗 <b>Sizning taklif havolangiz:</b>\n<code>{ref_link}</code>\n\n"
+        f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali:\n"
+        f"👉 <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>\n\n"
         f"👥 <b>Siz taklif qilgan do'stlar soni:</b> {ref_count} ta\n\n"
-        f"Ushbu havolani do'stlaringizga yuboring. Ular botga kirib kanalga qo'shilsa, hisobingizga +1 odam qo'shiladi!"
+        f"Kanalimiz linkini do'stlaringizga yuboring va ularni taklif qiling!"
     )
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
@@ -250,7 +242,7 @@ async def reset_handler(message: types.Message):
 
 @dp.message(lambda msg: msg.text == "📚 Kitoblar katalogi")
 async def catalog_handler(message: types.Message):
-    await message.answer(f"📚 Kitoblar katalogi bilan tanishish uchun kanalimizga o'ting: <a href='{CHANNEL_LINK}'>Jadid kitoblar do'koni</a>", parse_mode="HTML", disable_web_page_preview=True)
+    await message.answer(f"📚 Kitoblar katalogi bilan tanishish uchun kanalimizga o'ting: <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>", parse_mode="HTML", disable_web_page_preview=True)
 
 # Web Server Render uchun
 async def handle_ping(request):
