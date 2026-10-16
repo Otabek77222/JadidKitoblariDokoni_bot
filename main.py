@@ -130,7 +130,7 @@ async def check_subscription(user_id: int) -> bool:
 def main_menu_keyboard(user_id):
     buttons = [
         [KeyboardButton(text="📚 Kitoblar katalogi")],
-        [KeyboardButton(text="🔗 Taklif havolasi"), KeyboardButton(text="📊 Mening statistikaim")],
+        [KeyboardButton(text="🔗 Taklif havolasi"), KeyboardButton(text="📊 Mening statistikam")],
         [KeyboardButton(text="🏆 Top taklif qilganlar")]
     ]
     if user_id == ADMIN_ID:
