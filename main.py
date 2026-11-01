@@ -264,7 +264,7 @@ async def process_check_sub(callback_query: types.CallbackQuery):
   )
 
 
-# Taklif havolasini yaratish
+# Taklif havolasini yaratish (Sinmaydigan va toza ko'rinish)
 @dp.message(lambda msg: msg.text == "🔗 Taklif havolasi")
 async def referral_link_handler(message: types.Message):
   user_id = message.from_user.id
@@ -274,10 +274,11 @@ async def referral_link_handler(message: types.Message):
       inline_keyboard=[
           [
               InlineKeyboardButton(
-                  text="📤 Ulashish",
+                  text="📤 Do'stlarga ulashish",
                   url=(
                       f"https://t.me/share/url?url={ref_link}&text=Jadid%"
-                      "20kitoblar%20do'koniga%20qo'shiling!"
+                      "20kitoblar%20do'koniga%20qo'shiling%20va%20foydali%"
+                      "20kitoblarga%20ega%20bo'ling!"
                   ),
               )
           ]
@@ -285,10 +286,10 @@ async def referral_link_handler(message: types.Message):
   )
 
   text = (
-      f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n"
-      f"<code>{ref_link}</code>\n\n"
-      f"Doʻstlaringizga shu havolani yuboring. Ular botni ishga tushirishi"
-      f" bilan sizning referrallaringiz saqlanadi!"
+      f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n\n"
+      f"{ref_link}\n\n"
+      f"👉 Yuqoridagi havolani nusxalang yoki <b>\"📤 Do'stlarga ulashish\"</b>"
+      f" tugmasi orqali do'stlaringizga yuboring!"
   )
   await message.answer(
       text,
@@ -312,7 +313,7 @@ async def stats_handler(message: types.Message):
   await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
-# Top taklif qilganlar (Reyting) - Xatolikdan himoyalangan versiya
+# Top taklif qilganlar (Reyting)
 @dp.message(lambda msg: msg.text == "🏆 Top taklif qilganlar")
 async def leaderboard_handler(message: types.Message):
   top_users = get_leaderboard()
@@ -391,4 +392,3 @@ async def main():
 
 if __name__ == "__main__":
   asyncio.run(main())
-    
