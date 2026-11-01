@@ -57,12 +57,11 @@ def init_db():
     logging.error(f"Baza xatoligi: {e}")
 
 
-# Foydalanuvchini bazaga saqlash (agar oldin bo'lmasa, referrer_id bilan yoziladi)
+# Foydalanuvchini bazaga saqlash
 def save_user(user_id, first_name, username, referrer_id=None):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    # Agar foydalanuvchi allaqachon bazada bo'lsa, uning referrer_ini qaytadan o'zgartirmaymiz (faqat birinchi marta kelganda saqlanadi)
     cursor.execute(
         """
             INSERT INTO users (user_id, first_name, username, referrer_id)
@@ -170,20 +169,16 @@ async def start_handler(message: types.Message):
   args = message.text.split()
 
   referrer_id = None
-  # Agar havola orqali kirgan bo'lsa (masalan: /start ref_12345678)
   if len(args) > 1 and args[1].startswith("ref_"):
     try:
       potential_ref = int(args[1].replace("ref_", ""))
-      # O'zini o'zi taklif qilishining oldini olamiz
       if potential_ref != user_id:
         referrer_id = potential_ref
     except ValueError:
       pass
 
-  # Foydalanuvchini bazaga saqlaymiz (agar yangi bo'lsa va referrer bo'lsa yoziladi)
   save_user(user_id, first_name, username, referrer_id=referrer_id)
 
-  # Agar yangi foydalanuvchi taklif bilan kelgan bo'lsa va obuna bo'lmagan bo'lsa, taklif qilgan odamga xabar berishimiz mumkin (yoki kanalga qo'shilgach)
   if referrer_id:
     logging.info(
         f"Foydalanuvchi {user_id} referrer {referrer_id} orqali keldi."
@@ -201,7 +196,6 @@ async def start_handler(message: types.Message):
     except Exception as e:
       logging.error(f"Referrerga xabar yuborishda xatolik: {e}")
 
-  # Kanalga obuna bo'lganligini tekshiramiz
   is_subscribed = await check_subscription(user_id)
 
   if not is_subscribed:
@@ -270,7 +264,7 @@ async def process_check_sub(callback_query: types.CallbackQuery):
   )
 
 
-# Taklif havolasini yaratish (Botning start havolasi)
+# Taklif havolasini yaratish
 @dp.message(lambda msg: msg.text == "🔗 Taklif havolasi")
 async def referral_link_handler(message: types.Message):
   user_id = message.from_user.id
@@ -278,14 +272,23 @@ async def referral_link_handler(message: types.Message):
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
-          [InlineKeyboardButton(text="📤 Ulashish", url=f"https://t.me/share/url?url={ref_link}&text=Jadid%20kitoblar%20do'koniga%20qo'shiling!")]
+          [
+              InlineKeyboardButton(
+                  text="📤 Ulashish",
+                  url=(
+                      f"https://t.me/share/url?url={ref_link}&text=Jadid%"
+                      "20kitoblar%20do'koniga%20qo'shiling!"
+                  ),
+              )
+          ]
       ]
   )
 
   text = (
       f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n"
       f"<code>{ref_link}</code>\n\n"
-      f"Doʻstlaringizga shu havolani yuboring. Ular botni ishga tushirishi bilan sizning referrallaringiz saqlanadi!"
+      f"Doʻstlaringizga shu havolani yuboring. Ular botni ishga tushirishi"
+      f" bilan sizning referrallaringiz saqlanadi!"
   )
   await message.answer(
       text,
@@ -309,7 +312,7 @@ async def stats_handler(message: types.Message):
   await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
-# Top taklif qilganlar (Reyting)
+# Top taklif qilganlar (Reyting) - Xatolikdan himoyalangan versiya
 @dp.message(lambda msg: msg.text == "🏆 Top taklif qilganlar")
 async def leaderboard_handler(message: types.Message):
   top_users = get_leaderboard()
@@ -318,14 +321,12 @@ async def leaderboard_handler(message: types.Message):
     return
 
   text = "🏆 <b>Eng ko'p taklif qilganlar (TOP-10):</b>\n\n"
-  for idx, (first_name, username, count) in enumerate(top_users, start=1):
-    user_display = (
-        f"@{username}"
-        if username
-        else first_name
-        if first_name
-        else "Foydalanuvchi"
-    )
+  for idx, row in enumerate(top_users, start=1):
+    first_name = row[0] if len(row) > 0 and row[0] else "Foydalanuvchi"
+    username = row[1] if len(row) > 1 else None
+    count = row[2] if len(row) > 2 else 0
+
+    user_display = f"@{username}" if username else first_name
     text += f"{idx}. {user_display} — <b>{count} ta</b>\n"
 
   await message.answer(text, parse_mode="HTML")
@@ -390,4 +391,4 @@ async def main():
 
 if __name__ == "__main__":
   asyncio.run(main())
-      
+    
