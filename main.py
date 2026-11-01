@@ -6,7 +6,6 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
-    ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -27,6 +26,7 @@ PORT = int(os.getenv("PORT", 8080))
 ADMIN_ID = 761158313
 CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"
 CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
+BOT_USERNAME = "JadidKitoblariDokoni_bot"  # Botning username'i (@ belgisiz)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -40,14 +40,12 @@ def init_db():
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    # invite_link ustuni qo'shildi
     cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
                 first_name VARCHAR(255),
                 username VARCHAR(255),
                 referrer_id BIGINT,
-                invite_link VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -59,60 +57,26 @@ def init_db():
     logging.error(f"Baza xatoligi: {e}")
 
 
-# Foydalanuvchini bazaga saqlash
-def save_user(user_id, first_name, username, referrer_id=None, invite_link=None):
+# Foydalanuvchini bazaga saqlash (agar oldin bo'lmasa, referrer_id bilan yoziladi)
+def save_user(user_id, first_name, username, referrer_id=None):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
+    # Agar foydalanuvchi allaqachon bazada bo'lsa, uning referrer_ini qaytadan o'zgartirmaymiz (faqat birinchi marta kelganda saqlanadi)
     cursor.execute(
         """
-            INSERT INTO users (user_id, first_name, username, referrer_id, invite_link)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO users (user_id, first_name, username, referrer_id)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE 
             SET first_name = EXCLUDED.first_name, username = EXCLUDED.username;
         """,
-        (user_id, first_name, username, referrer_id, invite_link),
+        (user_id, first_name, username, referrer_id),
     )
     conn.commit()
     cursor.close()
     conn.close()
   except Exception as e:
     logging.error(f"Foydalanuvchini saqlashda xatolik: {e}")
-
-
-# Foydalanuvchining shaxsiy invite linkini bazaga yozish (agar hali bo'lmasa)
-def update_user_invite_link(user_id, invite_link):
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-            UPDATE users SET invite_link = %s WHERE user_id = %s;
-        """,
-        (invite_link, user_id),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-  except Exception as e:
-    logging.error(f"Invite linkni saqlashda xatolik: {e}")
-
-
-# Invite link bo'yicha egasini (referrer_id) topish
-def get_user_by_invite_link(invite_link):
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT user_id FROM users WHERE invite_link = %s;", (invite_link,)
-    )
-    res = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return res[0] if res else None
-  except Exception as e:
-    logging.error(f"Invite link egasini topishda xatolik: {e}")
-    return None
 
 
 # Taklif qilingan do'stlar soni
@@ -159,7 +123,7 @@ def reset_all_referrals():
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET referrer_id = NULL, invite_link = NULL;")
+    cursor.execute("UPDATE users SET referrer_id = NULL;")
     conn.commit()
     cursor.close()
     conn.close()
@@ -203,7 +167,41 @@ async def start_handler(message: types.Message):
   user_id = message.from_user.id
   first_name = message.from_user.first_name
   username = message.from_user.username
+  args = message.text.split()
 
+  referrer_id = None
+  # Agar havola orqali kirgan bo'lsa (masalan: /start ref_12345678)
+  if len(args) > 1 and args[1].startswith("ref_"):
+    try:
+      potential_ref = int(args[1].replace("ref_", ""))
+      # O'zini o'zi taklif qilishining oldini olamiz
+      if potential_ref != user_id:
+        referrer_id = potential_ref
+    except ValueError:
+      pass
+
+  # Foydalanuvchini bazaga saqlaymiz (agar yangi bo'lsa va referrer bo'lsa yoziladi)
+  save_user(user_id, first_name, username, referrer_id=referrer_id)
+
+  # Agar yangi foydalanuvchi taklif bilan kelgan bo'lsa va obuna bo'lmagan bo'lsa, taklif qilgan odamga xabar berishimiz mumkin (yoki kanalga qo'shilgach)
+  if referrer_id:
+    logging.info(
+        f"Foydalanuvchi {user_id} referrer {referrer_id} orqali keldi."
+    )
+    try:
+      await bot.send_message(
+          chat_id=referrer_id,
+          text=(
+              f"🎉 Tabriklaymiz! Sizning havolangiz orqali"
+              f" <b>{first_name}</b> botga kirdi! Kanalga a'zo bo'lishini"
+              f" kuting. 👥"
+          ),
+          parse_mode="HTML",
+      )
+    except Exception as e:
+      logging.error(f"Referrerga xabar yuborishda xatolik: {e}")
+
+  # Kanalga obuna bo'lganligini tekshiramiz
   is_subscribed = await check_subscription(user_id)
 
   if not is_subscribed:
@@ -229,8 +227,6 @@ async def start_handler(message: types.Message):
     )
     return
 
-  save_user(user_id, first_name, username)
-
   welcome_text = (
       f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
       f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
@@ -249,7 +245,6 @@ async def start_handler(message: types.Message):
 async def process_check_sub(callback_query: types.CallbackQuery):
   user_id = callback_query.from_user.id
   first_name = callback_query.from_user.first_name
-  username = callback_query.from_user.username
 
   is_subscribed = await check_subscription(user_id)
 
@@ -260,7 +255,6 @@ async def process_check_sub(callback_query: types.CallbackQuery):
     return
 
   await callback_query.message.delete()
-  save_user(user_id, first_name, username)
 
   welcome_text = (
       f"Rahmat, <b>{first_name}</b>! Obunangiz tasdiqlandi ✅\n\n"
@@ -276,44 +270,29 @@ async def process_check_sub(callback_query: types.CallbackQuery):
   )
 
 
-# Taklif havolasini yaratish (Har bir foydalanuvchiga kanal uchun unikal taklif havolasi yaratib beradi)
+# Taklif havolasini yaratish (Botning start havolasi)
 @dp.message(lambda msg: msg.text == "🔗 Taklif havolasi")
 async def referral_link_handler(message: types.Message):
   user_id = message.from_user.id
+  ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
 
-  try:
-    # Kanal uchun unikal taklif havolasi yaratish (Har bir foydalanuvchiga alohida link)
-    invite_link_obj = await bot.create_chat_invite_link(
-        chat_id=CHANNEL_USERNAME, name=f"User_{user_id}"
-    )
-    ref_link = invite_link_obj.invite_link
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [InlineKeyboardButton(text="📤 Ulashish", url=f"https://t.me/share/url?url={ref_link}&text=Jadid%20kitoblar%20do'koniga%20qo'shiling!")]
+      ]
+  )
 
-    # Linkni bazaga saqlab qo'yamiz, kim qo'shilganini aniqlash uchun
-    update_user_invite_link(user_id, ref_link)
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Kanalga o'tish", url=ref_link)]
-        ]
-    )
-
-    text = (
-        f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n"
-        f"<code>{ref_link}</code>\n\n"
-        f"Doʻstlaringizga shu havolani yuboring va ularni kanalga taklif qiling!"
-    )
-    await message.answer(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-        disable_web_page_preview=True,
-    )
-  except Exception as e:
-    logging.error(f"Invite link yaratishda xatolik: {e}")
-    await message.answer(
-        "❌ Havola yaratishda xatolik yuz berdi. Bot kanalga administrator"
-        " qilinganligini tekshiring."
-    )
+  text = (
+      f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n"
+      f"<code>{ref_link}</code>\n\n"
+      f"Doʻstlaringizga shu havolani yuboring. Ular botni ishga tushirishi bilan sizning referrallaringiz saqlanadi!"
+  )
+  await message.answer(
+      text,
+      parse_mode="HTML",
+      reply_markup=keyboard,
+      disable_web_page_preview=True,
+  )
 
 
 # Mening statistikamni chiqarish
@@ -325,7 +304,7 @@ async def stats_handler(message: types.Message):
   text = (
       f"📊 <b>Sizning statistikangiz:</b>\n\n"
       f"👥 Siz taklif qilgan do'stlar soni: <b>{ref_count} ta</b>\n\n"
-      f"Kanalimiz linkini do'stlaringizga yuboring va ularni taklif qiling!"
+      f"Taklif havolangizni do'stlaringizga yuboring va ularni taklif qiling!"
   )
   await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
@@ -376,78 +355,6 @@ async def catalog_handler(message: types.Message):
       parse_mode="HTML",
       disable_web_page_preview=True,
   )
-
-
-# Foydalanuvchi kanalga qo'shilganda ishlaydigan handler (to'g'rilangan versiya)
-@dp.chat_member()
-async def track_chat_member(event: ChatMemberUpdated):
-  # Faqat bizning kanal ekanligini tekshiramiz
-  if (
-      event.chat.username
-      and event.chat.username.lower() != CHANNEL_USERNAME.lstrip("@").lower()
-  ):
-    return
-
-  logging.info(
-      f"ChatMember keldi! Foydalanuvchi: {event.new_chat_member.user.id}, "
-      f"Eski status: {event.old_chat_member.status}, Yangi status:"
-      f" {event.new_chat_member.status}"
-  )
-
-  # Yangi status a'zo bo'lganini bildirsa
-  if event.new_chat_member.status in ["member", "administrator", "creator"]:
-    user = event.new_chat_member.user
-
-    # Invite linkni to'g'ridan-to'g'ri olish
-    link_url = None
-    if event.invite_link and hasattr(event.invite_link, "invite_link"):
-      link_url = event.invite_link.invite_link
-    elif (
-        isinstance(event.invite_link, dict)
-        and "invite_link" in event.invite_link
-    ):
-      link_url = event.invite_link["invite_link"]
-
-    logging.info(f"Topilgan invite link: {link_url}")
-
-    if link_url:
-      # Bu havola kimga tegishli ekanligini bazadan topamiz
-      referrer_id = get_user_by_invite_link(link_url)
-      logging.info(f"Bazadan topilgan referrer_id: {referrer_id}")
-
-      if referrer_id and referrer_id != user.id:
-        # Bazaga foydalanuvchini va uning referrer_id sini yozamiz
-        save_user(
-            user_id=user.id,
-            first_name=user.first_name,
-            username=user.username,
-            referrer_id=referrer_id,
-            invite_link=link_url,
-        )
-        try:
-          # Taklif qilgan odamga xabar yuborish
-          await bot.send_message(
-              chat_id=referrer_id,
-              text=(
-                  f"🎉 Tabriklaymiz! Sizning taklif havolangiz orqali"
-                  f" <b>{user.first_name}</b> kanalimizga qoʻshildi! 👥"
-              ),
-              parse_mode="HTML",
-          )
-          logging.info(
-              f"Referrer ({referrer_id}) ga muvaffaqiyatli xabar yuborildi."
-          )
-        except Exception as e:
-          logging.error(f"Referrerga xabar yuborishda xatolik: {e}")
-      else:
-        logging.warning(
-            "Referrer topilmadi yoki foydalanuvchi o'zini o'zi taklif qilgan."
-        )
-    else:
-      logging.warning(
-          "Foydalanuvchi maxsus invite link orqali emas, oddiy link orqali"
-          " qo'shildi!"
-      )
 
 
 # Web Server Render uchun
