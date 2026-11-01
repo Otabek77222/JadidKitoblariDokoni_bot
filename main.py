@@ -26,7 +26,7 @@ PORT = int(os.getenv("PORT", 8080))
 ADMIN_ID = 761158313
 CHANNEL_USERNAME = "@jadid_kitoblar_dokoni"
 CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
-BOT_USERNAME = "JadidKitoblariDokoni_bot"  # Botning username'i (@ belgisiz)
+BOT_USERNAME = "JadidKitobDokoni_bot"  # Botning aniq username'i (@ belgisiz)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -397,5 +397,5 @@ async def main():
 
 
 if __name__ == "__main__":
-  asyncio.run(main())  # <-- TO'G'RILANDI: asyncio.run() ishlatildi
+  asyncio.run(main())
     
