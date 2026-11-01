@@ -222,7 +222,8 @@ async def start_handler(message: types.Message):
         ]
     )
     await message.answer(
-        f"❌ Hurmatli <b>{first_name}</b>, botimizdan foydalanish uchun avval quyidagi kanalimizga obuna boʻlishingiz kerak:",
+        f"❌ Hurmatli <b>{first_name}</b>, botimizdan foydalanish uchun avval"
+        f" quyidagi kanalimizga obuna boʻlishingiz kerak:",
         parse_mode="HTML",
         reply_markup=subscribe_keyboard,
     )
@@ -302,12 +303,16 @@ async def referral_link_handler(message: types.Message):
         f"Doʻstlaringizga shu havolani yuboring va ularni kanalga taklif qiling!"
     )
     await message.answer(
-        text, parse_mode="HTML", reply_markup=keyboard, disable_web_page_preview=True
+        text,
+        parse_mode="HTML",
+        reply_markup=keyboard,
+        disable_web_page_preview=True,
     )
   except Exception as e:
     logging.error(f"Invite link yaratishda xatolik: {e}")
     await message.answer(
-        "❌ Havola yaratishda xatolik yuz berdi. Bot kanalga administrator qilinganligini tekshiring."
+        "❌ Havola yaratishda xatolik yuz berdi. Bot kanalga administrator"
+        " qilinganligini tekshiring."
     )
 
 
@@ -428,9 +433,12 @@ async def start_web_server():
 
 async def main():
   init_db()
-  await asyncio.gather(start_web_server(), dp.start_polling(bot))
+  # drop_pending_updates=True qo'shildi 👇
+  await asyncio.gather(
+      start_web_server(), dp.start_polling(bot, drop_pending_updates=True)
+  )
 
 
 if __name__ == "__main__":
   asyncio.run(main())
-                         
+    
