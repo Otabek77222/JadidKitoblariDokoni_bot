@@ -397,5 +397,5 @@ async def main():
 
 
 if __name__ == "__main__":
-  asyncio.main(main())
-        
+  asyncio.run(main())  # <-- TO'G'RILANDI: asyncio.run() ishlatildi
+    
