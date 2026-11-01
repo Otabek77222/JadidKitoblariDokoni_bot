@@ -166,19 +166,25 @@ async def start_handler(message: types.Message):
   user_id = message.from_user.id
   first_name = message.from_user.first_name
   username = message.from_user.username
-  args = message.text.split()
 
+  # Start argumentlarini xavfsiz ajratib olish
+  args = message.text.split(maxsplit=1)
   referrer_id = None
-  if len(args) > 1 and args[1].startswith("ref_"):
-    try:
-      potential_ref = int(args[1].replace("ref_", ""))
-      if potential_ref != user_id:
-        referrer_id = potential_ref
-    except ValueError:
-      pass
 
+  if len(args) > 1:
+    param = args[1]
+    if param.startswith("ref_"):
+      try:
+        potential_ref = int(param.replace("ref_", ""))
+        if potential_ref != user_id:
+          referrer_id = potential_ref
+      except ValueError:
+        pass
+
+  # Foydalanuvchini bazaga saqlash
   save_user(user_id, first_name, username, referrer_id=referrer_id)
 
+  # Agar boshqa odamning havolasi orqali kelgan bo'lsa
   if referrer_id:
     logging.info(
         f"Foydalanuvchi {user_id} referrer {referrer_id} orqali keldi."
@@ -188,14 +194,14 @@ async def start_handler(message: types.Message):
           chat_id=referrer_id,
           text=(
               f"🎉 Tabriklaymiz! Sizning havolangiz orqali"
-              f" <b>{first_name}</b> botga kirdi! Kanalga a'zo bo'lishini"
-              f" kuting. 👥"
+              f" <b>{first_name}</b> botga kirdi! 👥"
           ),
           parse_mode="HTML",
       )
     except Exception as e:
       logging.error(f"Referrerga xabar yuborishda xatolik: {e}")
 
+  # Kanalga obuna bo'lganligini tekshiramiz
   is_subscribed = await check_subscription(user_id)
 
   if not is_subscribed:
@@ -391,4 +397,5 @@ async def main():
 
 
 if __name__ == "__main__":
-  asyncio.run(main())
+  asyncio.main(main())
+        
