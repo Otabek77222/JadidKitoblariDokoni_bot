@@ -254,13 +254,12 @@ async def referral_link_handler(message: types.Message):
   ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
 
   text = (
-      f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali:\n"
-      f"👉 <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>\n\n"
-      f"🔗 <b>Sizning taklif havolangiz:</b>\n<code>{ref_link}</code>\n\n"
+      f"🔗 <b>Sizning shaxsiy taklif havolangiz:</b>\n"
+      f"<code>{ref_link}</code>\n\n"
       f"Doʻstlaringizga shu havolani yuboring va ularni taklif qiling!"
   )
   await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
-
+    
 
 # Mening statistikamni chiqarish
 @dp.message(lambda msg: msg.text == "📊 Mening statistikam")
