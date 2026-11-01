@@ -1,12 +1,18 @@
-import os
-import logging
 import asyncio
+import logging
+import os
+
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
-import psycopg2
+from aiogram.filters import Command, CommandStart
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 from aiohttp import web
+import psycopg2
 
 # Logging sozlamalari
 logging.basicConfig(level=logging.INFO)
@@ -24,15 +30,16 @@ CHANNEL_LINK = "https://t.me/jadid_kitoblar_dokoni"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+
 # Supabase PostgreSQL bazasini ishga tushirish
 def init_db():
-    if not DATABASE_URL:
-        logging.error("DATABASE_URL topilmadi!")
-        return
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("""
+  if not DATABASE_URL:
+    logging.error("DATABASE_URL topilmadi!")
+    return
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
                 first_name VARCHAR(255),
@@ -41,50 +48,59 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        conn.commit()
-        cursor.close()
-        conn.close()
-        logging.info("Ma'lumotlar bazasi tayyor.")
-    except Exception as e:
-        logging.error(f"Baza xatoligi: {e}")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    logging.info("Ma'lumotlar bazasi tayyor.")
+  except Exception as e:
+    logging.error(f"Baza xatoligi: {e}")
+
 
 # Foydalanuvchini bazaga saqlash
 def save_user(user_id, first_name, username, referrer_id=None):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("""
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    # Agar foydalanuvchi oldindan mavjud bo'lsa, uning referrer_id sini qayta o'zgartirmaymiz (takroriy yozilib ketmasligi uchun)
+    cursor.execute(
+        """
             INSERT INTO users (user_id, first_name, username, referrer_id)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE 
             SET first_name = EXCLUDED.first_name, username = EXCLUDED.username;
-        """, (user_id, first_name, username, referrer_id))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        logging.error(f"Foydalanuvchini saqlashda xatolik: {e}")
+        """,
+        (user_id, first_name, username, referrer_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+  except Exception as e:
+    logging.error(f"Foydalanuvchini saqlashda xatolik: {e}")
+
 
 # Taklif qilingan do'stlar soni
 def get_referral_count(user_id):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users WHERE referrer_id = %s;", (user_id,))
-        count = cursor.fetchone()[0]
-        cursor.close()
-        conn.close()
-        return count
-    except Exception as e:
-        logging.error(f"Referrallarni sanashda xatolik: {e}")
-        return 0
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM users WHERE referrer_id = %s;", (user_id,)
+    )
+    count = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+    return count
+  except Exception as e:
+    logging.error(f"Referrallarni sanashda xatolik: {e}")
+    return 0
+
 
 # Eng ko'p taklif qilgan TOP 10 talikni olish
 def get_leaderboard():
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("""
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute("""
             SELECT u.first_name, u.username, COUNT(r.user_id) as ref_count
             FROM users u
             JOIN users r ON u.user_id = r.referrer_id
@@ -92,177 +108,241 @@ def get_leaderboard():
             ORDER BY ref_count DESC
             LIMIT 10;
         """)
-        top_users = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return top_users
-    except Exception as e:
-        logging.error(f"Reytingni olishda xatolik: {e}")
-        return []
+    top_users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return top_users
+  except Exception as e:
+    logging.error(f"Reytingni olishda xatolik: {e}")
+    return []
+
 
 # Barcha referral ulashuvlarni bekor qilish (Reset)
 def reset_all_referrals():
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET referrer_id = NULL;")
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return True
-    except Exception as e:
-        logging.error(f"Natijalarni tozalashda xatolik: {e}")
-        return False
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET referrer_id = NULL;")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return True
+  except Exception as e:
+    logging.error(f"Natijalarni tozalashda xatolik: {e}")
+    return False
+
 
 # Kanalga obuna bo'lganligini tekshirish funksiyasi
 async def check_subscription(user_id: int) -> bool:
-    try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        if member.status in ["creator", "administrator", "member"]:
-            return True
-        return False
-    except TelegramBadRequest:
-        return True
-    except Exception:
-        return False
+  try:
+    member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+    if member.status in ["creator", "administrator", "member"]:
+      return True
+    return False
+  except TelegramBadRequest:
+    return True
+  except Exception:
+    return False
+
 
 # Asosiy menyu klaviaturasi
 def main_menu_keyboard(user_id):
-    buttons = [
-        [KeyboardButton(text="📚 Kitoblar katalogi")],
-        [KeyboardButton(text="🔗 Taklif havolasi"), KeyboardButton(text="📊 Mening statistikam")],
-        [KeyboardButton(text="🏆 Top taklif qilganlar")]
-    ]
-    if user_id == ADMIN_ID:
-        buttons.append([KeyboardButton(text="⚙️ Natijalarni bekor qilish (Admin)")])
+  buttons = [
+      [KeyboardButton(text="📚 Kitoblar katalogi")],
+      [
+          KeyboardButton(text="🔗 Taklif havolasi"),
+          KeyboardButton(text="📊 Mening statistikam"),
+      ],
+      [KeyboardButton(text="🏆 Top taklif qilganlar")],
+  ]
+  if user_id == ADMIN_ID:
+    buttons.append([KeyboardButton(text="⚙️ Natijalarni bekor qilish (Admin)")])
 
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+  return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
-    user_id = message.from_user.id
-    first_name = message.from_user.first_name
-    username = message.from_user.username
-    
-    is_subscribed = await check_subscription(user_id)
-    
-    if not is_subscribed:
-        subscribe_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=CHANNEL_LINK)],
-                [InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data="check_sub")]
-            ]
-        )
-        await message.answer(
-            f"❌ Hurmatli <b>{first_name}</b>, botimizdan foydalanish uchun avval quyidagi kanalimizga obuna boʻlishingiz kerak:",
-            parse_mode="HTML",
-            reply_markup=subscribe_keyboard
-        )
-        return
+  user_id = message.from_user.id
+  first_name = message.from_user.first_name
+  username = message.from_user.username
 
-    args = message.text.split()
-    referrer_id = None
-    if len(args) > 1 and args[1].isdigit():
-        possible_referrer = int(args[1])
-        if possible_referrer != user_id:
-            referrer_id = possible_referrer
+  is_subscribed = await check_subscription(user_id)
 
-    save_user(user_id, first_name, username, referrer_id)
-    
-    welcome_text = (
-        f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
-        f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
-        f"Kanalimiz: Jadid kitoblar do'koni\n\n"
-        f"Quyidagi menyudan kerakli boʻlimni tanlang."
+  if not is_subscribed:
+    subscribe_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Kanalga obuna bo'lish", url=CHANNEL_LINK
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✅ Obunani tekshirish", callback_data="check_sub"
+                )
+            ],
+        ]
     )
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
+    await message.answer(
+        f"❌ Hurmatli <b>{first_name}</b>, botimizdan foydalanish uchun avval quyidagi kanalimizga obuna boʻlishingiz kerak:",
+        parse_mode="HTML",
+        reply_markup=subscribe_keyboard,
+    )
+    return
+
+  args = message.text.split()
+  referrer_id = None
+  if len(args) > 1 and args[1].isdigit():
+    possible_referrer = int(args[1])
+    if possible_referrer != user_id:
+      referrer_id = possible_referrer
+
+  # Foydalanuvchini bazaga saqlash (agar u allaqachon mavjud bo'lsa, referrer_id o'zgarmaydi)
+  save_user(user_id, first_name, username, referrer_id)
+
+  welcome_text = (
+      f"Assalomu alaykum, <b>{first_name}</b>!\n\n"
+      f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
+      f"Kanalimiz: Jadid kitoblar do'koni\n\n"
+      f"Quyidagi menyudan kerakli boʻlimni tanlang."
+  )
+  await message.answer(
+      welcome_text,
+      parse_mode="HTML",
+      reply_markup=main_menu_keyboard(user_id),
+      disable_web_page_preview=True,
+  )
+
 
 @dp.callback_query(lambda c: c.data == "check_sub")
 async def process_check_sub(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    first_name = callback_query.from_user.first_name
-    username = callback_query.from_user.username
-    
-    is_subscribed = await check_subscription(user_id)
-    
-    if not is_subscribed:
-        await callback_query.answer("❌ Siz hali kanalga obuna bo'lmadingiz!", show_alert=True)
-        return
+  user_id = callback_query.from_user.id
+  first_name = callback_query.from_user.first_name
+  username = callback_query.from_user.username
 
-    await callback_query.message.delete()
-    save_user(user_id, first_name, username)
-    
-    welcome_text = (
-        f"Rahmat, <b>{first_name}</b>! Obunangiz tasdiqlandi ✅\n\n"
-        f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
-        f"Kanalimiz: Jadid kitoblar do'koni\n\n"
-        f"Quyidagi menyudan kerakli boʻlimni tanlang."
+  is_subscribed = await check_subscription(user_id)
+
+  if not is_subscribed:
+    await callback_query.answer(
+        "❌ Siz hali kanalga obuna bo'lmadingiz!", show_alert=True
     )
-    await callback_query.message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard(user_id), disable_web_page_preview=True)
+    return
 
-@dp.message(lambda msg: msg.text in ["🔗 Taklif havolasi", "📊 Mening statistikaim"])
+  await callback_query.message.delete()
+  save_user(user_id, first_name, username)
+
+  welcome_text = (
+      f"Rahmat, <b>{first_name}</b>! Obunangiz tasdiqlandi ✅\n\n"
+      f"<b>«Jadid kitoblar doʻkoni»</b> botiga xush kelibsiz! 📖\n"
+      f"Kanalimiz: Jadid kitoblar do'koni\n\n"
+      f"Quyidagi menyudan kerakli boʻlimni tanlang."
+  )
+  await callback_query.message.answer(
+      welcome_text,
+      parse_mode="HTML",
+      reply_markup=main_menu_keyboard(user_id),
+      disable_web_page_preview=True,
+  )
+
+
+# Taklif havolasini chiqarish
+@dp.message(lambda msg: msg.text == "🔗 Taklif havolasi")
+async def referral_link_handler(message: types.Message):
+  user_id = message.from_user.id
+  bot_info = await bot.get_me()
+  ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
+  text = (
+      f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali:\n"
+      f"👉 <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>\n\n"
+      f"🔗 <b>Sizning taklif havolangiz:</b>\n<code>{ref_link}</code>\n\n"
+      f"Doʻstlaringizga shu havolani yuboring va ularni taklif qiling!"
+  )
+  await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+# Mening statistikamni chiqarish
+@dp.message(lambda msg: msg.text == "📊 Mening statistikam")
 async def stats_handler(message: types.Message):
-    user_id = message.from_user.id
-    ref_count = get_referral_count(user_id)
-    
-    text = (
-        f"📚 <b>«Jadid kitoblar doʻkoni»</b> rasmiy kanali:\n"
-        f"👉 <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>\n\n"
-        f"👥 <b>Siz taklif qilgan do'stlar soni:</b> {ref_count} ta\n\n"
-        f"Kanalimiz linkini do'stlaringizga yuboring va ularni taklif qiling!"
-    )
-    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+  user_id = message.from_user.id
+  ref_count = get_referral_count(user_id)
+
+  text = (
+      f"📊 <b>Sizning statistikangiz:</b>\n\n"
+      f"👥 Siz taklif qilgan do'stlar soni: <b>{ref_count} ta</b>\n\n"
+      f"Kanalimiz linkini do'stlaringizga yuboring va ularni taklif qiling!"
+  )
+  await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
 
 # Top taklif qilganlar (Reyting)
 @dp.message(lambda msg: msg.text == "🏆 Top taklif qilganlar")
 async def leaderboard_handler(message: types.Message):
-    top_users = get_leaderboard()
-    if not top_users:
-        await message.answer("🏆 Hozircha hech kim taklif qilmagan yoki reyting bo'sh.")
-        return
+  top_users = get_leaderboard()
+  if not top_users:
+    await message.answer("🏆 Hozircha hech kim taklif qilmagan yoki reyting bo'sh.")
+    return
 
-    text = "🏆 <b>Eng ko'p taklif qilganlar (TOP-10):</b>\n\n"
-    for idx, (first_name, username, count) in enumerate(top_users, start=1):
-        user_display = f"@{username}" if username else first_name
-        text += f"{idx}. {user_display} — <b>{count} ta</b>\n"
+  text = "🏆 <b>Eng ko'p taklif qilganlar (TOP-10):</b>\n\n"
+  for idx, (first_name, username, count) in enumerate(top_users, start=1):
+    user_display = (
+        f"@{username}"
+        if username
+        else first_name
+        if first_name
+        else "Foydalanuvchi"
+    )
+    text += f"{idx}. {user_display} — <b>{count} ta</b>\n"
 
-    await message.answer(text, parse_mode="HTML")
+  await message.answer(text, parse_mode="HTML")
+
 
 # Admin uchun natijalarni bekor qilish tugmasi
 @dp.message(lambda msg: msg.text == "⚙️ Natijalarni bekor qilish (Admin)")
 async def reset_handler(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔️ Sizda bu amalni bajarish uchun huquq yo'q!")
-        return
+  if message.from_user.id != ADMIN_ID:
+    await message.answer("⛔️ Sizda bu amalni bajarish uchun huquq yo'q!")
+    return
 
-    if reset_all_referrals():
-        await message.answer("✅ Barcha referral natijalari muvaffaqiyatli bekor qilindi (nolga tenglashtirildi)!")
-    else:
-        await message.answer("❌ Natijalarni bekor qilishda xatolik yuz berdi.")
+  if reset_all_referrals():
+    await message.answer(
+        "✅ Barcha referral natijalari muvaffaqiyatli bekor qilindi (nolga"
+        " tenglashtirildi)!"
+    )
+  else:
+    await message.answer("❌ Natijalarni bekor qilishda xatolik yuz berdi.")
+
 
 @dp.message(lambda msg: msg.text == "📚 Kitoblar katalogi")
 async def catalog_handler(message: types.Message):
-    await message.answer(f"📚 Kitoblar katalogi bilan tanishish uchun kanalimizga o'ting: <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>", parse_mode="HTML", disable_web_page_preview=True)
+  await message.answer(
+      f"📚 Kitoblar katalogi bilan tanishish uchun kanalimizga o'ting:"
+      f" <a href='{CHANNEL_LINK}'>{CHANNEL_LINK}</a>",
+      parse_mode="HTML",
+      disable_web_page_preview=True,
+  )
+
 
 # Web Server Render uchun
 async def handle_ping(request):
-    return web.Response(text="Bot is running!")
+  return web.Response(text="Bot is running!")
+
 
 async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
+  app = web.Application()
+  app.router.add_get("/", handle_ping)
+  runner = web.AppRunner(app)
+  await runner.setup()
+  site = web.TCPSite(runner, "0.0.0.0", PORT)
+  await site.start()
+
 
 async def main():
-    init_db()
-    await asyncio.gather(
-        start_web_server(),
-        dp.start_polling(bot)
-    )
+  init_db()
+  await asyncio.gather(start_web_server(), dp.start_polling(bot))
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    
+  asyncio.run(main())
+      
