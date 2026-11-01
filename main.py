@@ -378,9 +378,22 @@ async def catalog_handler(message: types.Message):
   )
 
 
-# Foydalanuvchi kanalga maxsus havola orqali qo'shilganda ishlaydiganhandler
-@dp.chat_member(F.chat.username == CHANNEL_USERNAME.lstrip("@"))
+# Foydalanuvchi kanalga qo'shilganda ishlaydigan handler (batafsil log bilan)
+@dp.chat_member()
 async def track_chat_member(event: ChatMemberUpdated):
+  # Faqat bizning kanal ekanligini tekshiramiz
+  if (
+      event.chat.username
+      and event.chat.username.lower() != CHANNEL_USERNAME.lstrip("@").lower()
+  ):
+    return
+
+  logging.info(
+      f"ChatMember keldi! Foydalanuvchi: {event.new_chat_member.user.id}, "
+      f"Eski status: {event.old_chat_member.status}, Yangi status:"
+      f" {event.new_chat_member.status}"
+  )
+
   # Faqat a'zo bo'lgan holatni tekshiramiz
   if (
       event.old_chat_member.status in ["left", "kicked"]
@@ -391,8 +404,11 @@ async def track_chat_member(event: ChatMemberUpdated):
 
     if invite_link and invite_link.invite_link:
       link_url = invite_link.invite_link
+      logging.info(f"Foydalangan invite link: {link_url}")
+
       # Bu havola kimga tegishli ekanligini bazadan topamiz
       referrer_id = get_user_by_invite_link(link_url)
+      logging.info(f"Topilgan referrer_id: {referrer_id}")
 
       if referrer_id and referrer_id != user.id:
         # Bazaga foydalanuvchini va uning referrer_id sini yozamiz
@@ -413,8 +429,20 @@ async def track_chat_member(event: ChatMemberUpdated):
               ),
               parse_mode="HTML",
           )
+          logging.info(
+              f"Referrer ({referrer_id}) ga muvaffaqiyatli xabar yuborildi."
+          )
         except Exception as e:
           logging.error(f"Referrerga xabar yuborishda xatolik: {e}")
+      else:
+        logging.warning(
+            "Referrer topilmadi yoki foydalanuvchi o'zini o'zi taklif qilgan."
+        )
+    else:
+      logging.warning(
+          "Foydalanuvchi maxsus invite link orqali emas, oddiy link orqali"
+          " qo'shildi!"
+      )
 
 
 # Web Server Render uchun
@@ -450,4 +478,4 @@ async def main():
 
 if __name__ == "__main__":
   asyncio.run(main())
-          
+                         
