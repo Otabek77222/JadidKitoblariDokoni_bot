@@ -57,7 +57,7 @@ def init_db():
     logging.error(f"Baza xatoligi: {e}")
 
 
-# Foydalanuvchini bazaga saqlash
+# Foydalanuvchini bazaga saqlash (Referrer yangilanishi uchun COALESCE qo'shildi)
 def save_user(user_id, first_name, username, referrer_id=None):
   try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -67,7 +67,9 @@ def save_user(user_id, first_name, username, referrer_id=None):
             INSERT INTO users (user_id, first_name, username, referrer_id)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE 
-            SET first_name = EXCLUDED.first_name, username = EXCLUDED.username;
+            SET first_name = EXCLUDED.first_name, 
+                username = EXCLUDED.username,
+                referrer_id = COALESCE(users.referrer_id, EXCLUDED.referrer_id);
         """,
         (user_id, first_name, username, referrer_id),
     )
@@ -398,4 +400,4 @@ async def main():
 
 if __name__ == "__main__":
   asyncio.run(main())
-    
+      
