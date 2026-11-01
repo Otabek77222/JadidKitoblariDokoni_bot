@@ -433,12 +433,21 @@ async def start_web_server():
 
 async def main():
   init_db()
-  # drop_pending_updates=True qo'shildi 👇
   await asyncio.gather(
-      start_web_server(), dp.start_polling(bot, drop_pending_updates=True)
+      start_web_server(),
+      dp.start_polling(
+          bot,
+          drop_pending_updates=True,
+          allowed_updates=[
+              "message",
+              "callback_query",
+              "chat_member",
+              "my_chat_member",
+          ],
+      ),
   )
 
 
 if __name__ == "__main__":
   asyncio.run(main())
-    
+          
