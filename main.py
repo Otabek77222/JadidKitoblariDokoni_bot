@@ -378,7 +378,7 @@ async def catalog_handler(message: types.Message):
   )
 
 
-# Foydalanuvchi kanalga qo'shilganda ishlaydigan handler (batafsil log bilan)
+# Foydalanuvchi kanalga qo'shilganda ishlaydigan handler (to'g'rilangan versiya)
 @dp.chat_member()
 async def track_chat_member(event: ChatMemberUpdated):
   # Faqat bizning kanal ekanligini tekshiramiz
@@ -394,21 +394,26 @@ async def track_chat_member(event: ChatMemberUpdated):
       f" {event.new_chat_member.status}"
   )
 
-  # Faqat a'zo bo'lgan holatni tekshiramiz
-  if (
-      event.old_chat_member.status in ["left", "kicked"]
-      and event.new_chat_member.status in ["member", "administrator", "creator"]
-  ):
+  # Yangi status a'zo bo'lganini bildirsa
+  if event.new_chat_member.status in ["member", "administrator", "creator"]:
     user = event.new_chat_member.user
-    invite_link = event.invite_link  # Foydalangan havola
 
-    if invite_link and invite_link.invite_link:
-      link_url = invite_link.invite_link
-      logging.info(f"Foydalangan invite link: {link_url}")
+    # Invite linkni to'g'ridan-to'g'ri olish
+    link_url = None
+    if event.invite_link and hasattr(event.invite_link, "invite_link"):
+      link_url = event.invite_link.invite_link
+    elif (
+        isinstance(event.invite_link, dict)
+        and "invite_link" in event.invite_link
+    ):
+      link_url = event.invite_link["invite_link"]
 
+    logging.info(f"Topilgan invite link: {link_url}")
+
+    if link_url:
       # Bu havola kimga tegishli ekanligini bazadan topamiz
       referrer_id = get_user_by_invite_link(link_url)
-      logging.info(f"Topilgan referrer_id: {referrer_id}")
+      logging.info(f"Bazadan topilgan referrer_id: {referrer_id}")
 
       if referrer_id and referrer_id != user.id:
         # Bazaga foydalanuvchini va uning referrer_id sini yozamiz
@@ -478,4 +483,4 @@ async def main():
 
 if __name__ == "__main__":
   asyncio.run(main())
-                         
+      
